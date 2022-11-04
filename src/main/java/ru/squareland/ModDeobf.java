@@ -70,15 +70,15 @@ public class ModDeobf {
     }
 
     public static void main(String[] programArgs) throws Exception {
-        File versionFile = new File("1.6.2.jar");
-        File deobfVersionFile = new File("1.6.2.deobf.jar");
-        File inputFile = new File("Biosphere-Mod-1.6.2.zip");
-        File outputFile = new File("Biosphere-Mod-1.6.2.deobf.jar");
-//        File inputFile = new File("1.6.2.jar");
-//        File outputFile = new File("1.6.2.deobf.jar");
+        File versionFile = new File("1.5.2.jar");
+        File deobfVersionFile = new File("1.5.2.deobf.jar");
+        File inputFile = new File("CB1.9.9.zip");
+        File outputFile = new File("CB1.9.9.deobf.jar");
+//        File inputFile = new File("1.5.2.jar");
+//        File outputFile = new File("1.5.2.deobf.jar");
 
-        Notch2SrgMapper srg = new Notch2SrgMapper("1.6.2", "client");
-        Srg2CsvMapper csv = new Srg2CsvMapper("1.6.2");
+        Notch2SrgMapper srg = new Notch2SrgMapper("1.5.2", "client");
+        Srg2CsvMapper csv = new Srg2CsvMapper("1.5.2");
 
         remap(List.of(srg, csv), inputFile, outputFile, versionFile);
 
