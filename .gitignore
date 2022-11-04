@@ -1,0 +1,5 @@
+/.idea
+/decompile
+/target
+*.jar
+*.zip
