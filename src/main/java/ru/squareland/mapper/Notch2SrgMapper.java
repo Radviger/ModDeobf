@@ -10,7 +10,7 @@ import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-public class Notch2SrgMapper implements Mapper {
+public class Notch2SrgMapper extends Mapper {
     private final Map<String, String> packages = new HashMap<>();
     private final Map<String, ClassMapping> obfuscatedClasses = new HashMap<>();
     private final Map<String, ClassMapping> classes = new HashMap<>();
@@ -72,12 +72,19 @@ public class Notch2SrgMapper implements Mapper {
             }
         }
     }
+
     @Override
-    public boolean process(ClassNode node) {
+    public boolean process(ClassNode node, HashSet<String> skip) {
         String className = node.name;
         String superName = node.superName;
-        ClassMapping clazz = find(className);
-        ClassMapping superClass = find(superName);
+        if (skip.contains(className)) {
+            return false;
+        }
+        skip.add(className);
+        deobfuscator.etrace("Processing class " + className);
+        deobfuscator.step++;
+        ClassMapping clazz = findObfuscated(className);
+        ClassMapping superClass = find(superName, skip);
 
         boolean mapped = false;
 
@@ -88,10 +95,13 @@ public class Notch2SrgMapper implements Mapper {
         if (superClass != null) {
             mapped = true;
             node.superName = superClass.name;
+        } else {
+            deobfuscator.etrace("Missing superclass " + node.superName);
         }
+
         List<ClassMapping> interfaces = new ArrayList<>();
         for (int i = 0; i < node.interfaces.size(); i++) {
-            ClassMapping interfaceClass = find(node.interfaces.get(i));
+            ClassMapping interfaceClass = find(node.interfaces.get(i), skip);
             if (interfaceClass != null) {
                 mapped = true;
                 interfaces.add(interfaceClass);
@@ -103,82 +113,91 @@ public class Notch2SrgMapper implements Mapper {
             clazz = new ClassMapping(className, className);
             clazz.parent = superClass;
             clazz.interfaces.addAll(interfaces);
+            classes.put(className, clazz);
         }
 
         for (FieldNode field : node.fields) {
-            ClassMapping.Member mm = clazz.findField(field.name, "", true, false);
+            ClassMapping.Member mm = clazz.findField(field.name, "", true, false, deobfuscator::etrace);
             if (mm != null) {
-                System.err.println("Found field mapping for " + field.name + ": " + mm.name() + " (" + field.desc + ")");
+                deobfuscator.etrace("Found field mapping for " + field.name + ": " + mm.name() + " (" + field.desc + ")");
                 mapped = true;
                 field.name = mm.name();
                 if (!mm.desc().isEmpty()) {
-                    System.err.println("!WARN! updated field desc from " + field.desc + " to " + mm.desc());
+                    deobfuscator.etrace("!WARN! updated field desc from " + field.desc + " to " + mm.desc());
                     field.desc = mm.desc();
                 }
             }
-            String d = descriptor(field.desc);
+            String d = descriptor(field.desc, skip);
             if (!d.equals(field.desc)) {
                 mapped = true;
                 field.desc = d;
             }
         }
         for (MethodNode method : node.methods) {
-            ClassMapping.Member mm = clazz.findMethod(method.name, method.desc, true, true);
+            deobfuscator.etrace("Mapping method " + method.name + method.desc);
+            ClassMapping.Member mm = clazz.findMethod(method.name, method.desc, true, true, deobfuscator::etrace);
             if (mm != null) {
                 mapped = true;
                 method.name = mm.name();
                 method.desc = mm.desc();
+                deobfuscator.etrace("Renamed to " + method.name + method.desc);
             }
             {
-                String d = fixMethodDesc(method.desc);
+                String d = fixMethodDesc(method.desc, skip);
                 if (!method.desc.equals(d)) {
                     mapped = true;
                     method.desc = d;
+                    deobfuscator.etrace("Fixed desc to " + method.desc);
                 }
             }
             if (method.localVariables != null) {
                 for (LocalVariableNode lv : method.localVariables) {
-                    String d = descriptor(lv.desc);
+                    String d = descriptor(lv.desc, skip);
                     if (!d.equals(lv.desc)) {
                         mapped = true;
                         lv.desc = d;
                     }
                 }
             }
+        }
+        for (MethodNode method : node.methods) {
+            deobfuscator.etrace("Mapping method instructions in " + method.name + method.desc);
             for (AbstractInsnNode insn : method.instructions) {
                 if (insn instanceof MethodInsnNode mi) {
-                    ClassMapping cm = mi.owner.equals(clazz.name) ? clazz : find(mi.owner);
+                    ClassMapping cm = mi.owner.equals(clazz.name) ? clazz : find(mi.owner, skip);
                     if (cm != null) {
-                        ClassMapping.Member m = cm.findMethod(mi.name, mi.desc, true, true);
+                        deobfuscator.etrace("Searching method " + mi.name + mi.desc + " in class " + cm.name + " (" + cm.obfuscatedName + ")");
+                        ClassMapping.Member m = cm.findMethod(mi.name, mi.desc, true, true, deobfuscator::etrace);
                         if (m != null) {
                             mapped = true;
                             mi.name = m.name();
                             mi.desc = m.desc();
+                            deobfuscator.etrace("Found " + mi.name + mi.desc);
                         }
                         if (!mi.owner.equals(cm.name)) {
                             mapped = true;
                             mi.owner = cm.name;
                         }
                     }
-                    String d = fixMethodDesc(mi.desc);
+                    String d = fixMethodDesc(mi.desc, skip);
                     if (!d.equals(mi.desc)) {
                         mapped = true;
                         mi.desc = d;
                     }
                 } else if (insn instanceof FieldInsnNode fi) {
-                    System.err.println("Was n=" + fi.name + " d=" + fi.desc + " o=" + fi.owner);
-                    String d = descriptor(fi.desc);
+                    deobfuscator.etrace("Was n=" + fi.name + " d=" + fi.desc + " o=" + fi.owner);
+                    String d = descriptor(fi.desc, skip);
                     if (!d.equals(fi.desc)) {
                         mapped = true;
                         fi.desc = d;
                     }
 
-                    ClassMapping cm = find(fi.owner);
+                    ClassMapping cm = find(fi.owner, skip);
 
                     if (cm != null) {
                         mapped = true;
                         fi.owner = cm.name;
-                        ClassMapping.Member m = cm.findField(fi.name, "", true, true);
+                        ClassMapping.Member m = cm.findField(fi.name, "", true, true, deobfuscator::etrace);
                         if (m != null) {
                             fi.name = m.name();
                             if (!m.desc().isEmpty()) {
@@ -186,9 +205,9 @@ public class Notch2SrgMapper implements Mapper {
                             }
                         }
                     }
-                    System.err.println("Now n=" + fi.name + " d=" + fi.desc + " o=" + fi.owner);
+                    deobfuscator.etrace("Now n=" + fi.name + " d=" + fi.desc + " o=" + fi.owner);
                 } else if (insn instanceof TypeInsnNode ti) {
-                    ClassMapping cm = find(ti.desc);
+                    ClassMapping cm = find(ti.desc, skip);
                     if (cm != null) {
                         mapped = true;
                         ti.desc = cm.name;
@@ -196,11 +215,13 @@ public class Notch2SrgMapper implements Mapper {
                 }
             }
         }
+        deobfuscator.step--;
         return mapped;
     }
 
     public void loadRelations(File file) throws IOException {
         try (ZipFile binary = new ZipFile(file)) {
+            HashSet<String> skip = new HashSet<>(Set.of("java/lang/Object"));
             Enumeration<? extends ZipEntry> entries = binary.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
@@ -209,19 +230,19 @@ public class Notch2SrgMapper implements Mapper {
                 }
                 try (InputStream stream = binary.getInputStream(entry)) {
                     ClassReader reader = new ClassReader(stream);
-                    ClassMapping clazz = find(reader.getClassName());
-                    ClassMapping parent = find(reader.getSuperName());
+                    ClassMapping clazz = find(reader.getClassName(), skip);
+                    ClassMapping parent = find(reader.getSuperName(), skip);
                     String[] itfs = reader.getInterfaces();
                     if (clazz != null && parent != null) {
-                        System.err.println("class " + clazz.name + " extends " + parent.name);
+                        deobfuscator.etrace("class " + clazz.name + " extends " + parent.name);
                         clazz.parent = parent;
                     }
                     if (clazz != null && itfs.length > 0) {
                         List<ClassMapping> interfaces = new ArrayList<>();
                         for (String itf : itfs) {
-                            ClassMapping i = find(itf);
+                            ClassMapping i = find(itf, skip);
                             if (i != null) {
-                                System.err.println("class " + clazz.name + " implements " + i.name);
+                                deobfuscator.etrace("class " + clazz.name + " implements " + i.name);
                                 interfaces.add(i);
                             }
                         }
@@ -232,24 +253,54 @@ public class Notch2SrgMapper implements Mapper {
         }
     }
 
-    public ClassMapping find(String name) {
+    public ClassMapping findObfuscated(String name) {
         return obfuscatedClasses.get(name);
     }
 
-    private String descriptor(String desc) {
+    public ClassMapping findDeobfuscated(String name) {
+        return classes.get(name);
+    }
+
+    public ClassMapping find(String name, HashSet<String> skip) {
+        if (name.startsWith("java/")) {
+            return null;
+        }
+        ClassMapping first = findObfuscated(name);
+        if (first == null) {
+            first = findDeobfuscated(name);
+        }
+
+        if (first == null && !skip.contains(name)) {
+            deobfuscator.trace("Searching node for class: " + name);
+            deobfuscator.step++;
+            ClassNode node = deobfuscator.loadNode(name, skip);
+            deobfuscator.step--;
+            if (node != null) {
+                deobfuscator.step++;
+                process(node, skip);
+                deobfuscator.step--;
+                return findDeobfuscated(name);
+            } else {
+                deobfuscator.etrace("Missing node: " + name);
+            }
+        }
+        return first;
+    }
+
+    private String descriptor(String desc, HashSet<String> skip) {
         Type type = Type.getType(desc);
         if (type.getSort() == Type.ARRAY) {
             Type et = type.getElementType();
-            System.err.println("ARRAY TYPE DESC: " + desc + " array of " + et.getInternalName());
+            deobfuscator.etrace("ARRAY TYPE DESC: " + desc + " array of " + et.getInternalName());
             if (et.getSort() == Type.OBJECT) {
-                ClassMapping mapping = find(et.getInternalName());
+                ClassMapping mapping = find(et.getInternalName(), skip);
                 if (mapping != null) {
-                    System.err.println("Mapped to " + "[L" + mapping.name + ";");
+                    deobfuscator.etrace("Mapped to " + "[L" + mapping.name + ";");
                     return "[L" + mapping.name + ";";
                 }
             }
         } else if (type.getSort() == Type.OBJECT) {
-            ClassMapping mapping = find(type.getInternalName());
+            ClassMapping mapping = find(type.getInternalName(), skip);
             if (mapping != null) {
                 return "L" + mapping.name + ";";
             }
@@ -257,14 +308,14 @@ public class Notch2SrgMapper implements Mapper {
         return desc;
     }
 
-    private String fixMethodDesc(String desc) {
+    private String fixMethodDesc(String desc, HashSet<String> skip) {
         Type ret = Type.getReturnType(desc);
         Type[] args = Type.getArgumentTypes(desc);
         boolean modified = false;
         for (int i = 0; i < args.length; i++) {
             Type a = args[i];
             if (a.getSort() == Type.OBJECT) {
-                ClassMapping am = find(a.getInternalName());
+                ClassMapping am = find(a.getInternalName(), skip);
                 if (am != null) {
                     modified = true;
                     args[i] = Type.getObjectType(am.name);
@@ -272,7 +323,7 @@ public class Notch2SrgMapper implements Mapper {
             }
         }
         if (ret.getSort() == Type.OBJECT) {
-            ClassMapping rm = find(ret.getInternalName());
+            ClassMapping rm = find(ret.getInternalName(), skip);
             if (rm != null) {
                 modified = true;
                 ret = Type.getObjectType(rm.name);

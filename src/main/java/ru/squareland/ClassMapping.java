@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class ClassMapping {
     public final String obfuscatedName;
@@ -18,17 +19,12 @@ public class ClassMapping {
         this.name = name;
     }
 
-    public Member findField(String name, String signature, boolean obfuscated, boolean searchParent) {
+    public Member findField(String name, String signature, boolean obfuscated, boolean searchParent, Consumer<String> logger) {
         Member field = fields.find(name, signature, obfuscated);
         if (field == null && searchParent) {
+            logger.accept("skip to super field `" + name + ": " + signature + "` search: super = " + (parent == null ? null : parent.name));
             if (parent != null) {
-                Member mm = parent.findField(name, signature, obfuscated, true);
-                if (mm != null) {
-                    return mm;
-                }
-            }
-            for (ClassMapping itf : interfaces) {
-                Member mm = itf.findField(name, signature, obfuscated, true);
+                Member mm = parent.findField(name, signature, obfuscated, true, logger);
                 if (mm != null) {
                     return mm;
                 }
@@ -37,19 +33,24 @@ public class ClassMapping {
         return field;
     }
 
-    public Member findMethod(String name, String signature, boolean obfuscated, boolean searchParent) {
+    public Member findMethod(String name, String signature, boolean obfuscated, boolean searchParent, Consumer<String> logger) {
+        boolean init = name.equals("<init>");
         Member method = methods.find(name, signature, obfuscated);
         if (method == null && searchParent) {
+            logger.accept("skip to super method `" + name + ": " + signature + "` search: super = " + (parent == null ? null : parent.name));
             if (parent != null) {
-                Member mm = parent.findMethod(name, signature, obfuscated, true);
+                Member mm = parent.findMethod(name, signature, obfuscated, !init, logger);
                 if (mm != null) {
                     return mm;
                 }
             }
-            for (ClassMapping itf : interfaces) {
-                Member mm = itf.findMethod(name, signature, obfuscated, true);
-                if (mm != null) {
-                    return mm;
+            if (!init) {
+                for (ClassMapping itf : interfaces) {
+                    logger.accept("interface = " + itf.name + " (" + itf.obfuscatedName + ")");
+                    Member mm = itf.findMethod(name, signature, obfuscated, true, logger);
+                    if (mm != null) {
+                        return mm;
+                    }
                 }
             }
         }

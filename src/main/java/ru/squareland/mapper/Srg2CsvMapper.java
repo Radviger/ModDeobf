@@ -1,22 +1,21 @@
 package ru.squareland.mapper;
 
 import org.objectweb.asm.tree.*;
+import ru.squareland.Deobfuscator;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Srg2CsvMapper implements Mapper {
+public class Srg2CsvMapper extends Mapper {
     public static final Pattern ID_PATTERN = Pattern.compile("^[a-z]+_(\\d+)_\\w+");
     private static final Map<String, Integer> IDS = new HashMap<>();
 
     private final Map<Integer, String> methods = new HashMap<>();
     private final Map<Integer, String> fields = new HashMap<>();
     private final Map<Integer, List<String>> params = new HashMap<>();
+    private Deobfuscator deobfuscator;
 
     public Srg2CsvMapper(String version) throws IOException {
         InputStream mis = Srg2CsvMapper.class.getResourceAsStream("/mappings/" + version + "/methods.csv");
@@ -75,7 +74,7 @@ public class Srg2CsvMapper implements Mapper {
     }
 
     @Override
-    public boolean process(ClassNode node) {
+    public boolean process(ClassNode node, HashSet<String> skip) {
         boolean mapped = false;
         for (FieldNode field : node.fields) {
             int id = idOf(field.name);
