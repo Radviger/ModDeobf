@@ -1,5 +1,5 @@
 /.idea
-/decompile
+/decompile*
 /target
 *.jar
 *.zip
