@@ -207,10 +207,11 @@ public class Notch2SrgMapper extends Mapper {
                     }
                     deobfuscator.etrace("Now n=" + fi.name + " d=" + fi.desc + " o=" + fi.owner);
                 } else if (insn instanceof TypeInsnNode ti) {
-                    ClassMapping cm = find(ti.desc, skip);
+                    Type ty = Type.getObjectType(ti.desc);
+                    ClassMapping cm = find(ty.getClassName(), skip);
                     if (cm != null) {
                         mapped = true;
-                        ti.desc = cm.name;
+                        ti.desc = ti.desc.replace(ty.getClassName(), cm.name);
                     }
                 } else if (insn instanceof LdcInsnNode li && li.cst instanceof Type ty) {
                     ClassMapping cm = find(ty.getClassName(), skip);
