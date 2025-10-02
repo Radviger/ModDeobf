@@ -211,13 +211,13 @@ public class Notch2SrgMapper extends Mapper {
                     ClassMapping cm = find(ty.getClassName(), skip);
                     if (cm != null) {
                         mapped = true;
-                        ti.desc = ti.desc.replace(ty.getClassName(), cm.name);
+                        ti.desc = Type.getType(descriptor(ti.desc, ty, skip)).getInternalName();
                     }
                 } else if (insn instanceof LdcInsnNode li && li.cst instanceof Type ty) {
                     ClassMapping cm = find(ty.getClassName(), skip);
                     if (cm != null) {
                         mapped = true;
-                        li.cst = Type.getType(ty.getDescriptor().replace(ty.getClassName(), cm.name));
+                        li.cst = Type.getType(descriptor(ty.getDescriptor(), ty, skip));
                     }
                 }
             }
@@ -294,18 +294,10 @@ public class Notch2SrgMapper extends Mapper {
         return first;
     }
 
-    private String descriptor(String desc, HashSet<String> skip) {
-        Type type = Type.getType(desc);
+    private String descriptor(String desc, Type type, HashSet<String> skip) {
         if (type.getSort() == Type.ARRAY) {
             Type et = type.getElementType();
-            deobfuscator.etrace("ARRAY TYPE DESC: " + desc + " array of " + et.getInternalName());
-            if (et.getSort() == Type.OBJECT) {
-                ClassMapping mapping = find(et.getInternalName(), skip);
-                if (mapping != null) {
-                    deobfuscator.etrace("Mapped to " + "[L" + mapping.name + ";");
-                    return "[L" + mapping.name + ";";
-                }
-            }
+            return '[' + descriptor(desc, et, skip);
         } else if (type.getSort() == Type.OBJECT) {
             ClassMapping mapping = find(type.getInternalName(), skip);
             if (mapping != null) {
@@ -315,26 +307,27 @@ public class Notch2SrgMapper extends Mapper {
         return desc;
     }
 
+    private String descriptor(String desc, HashSet<String> skip) {
+        Type type = Type.getType(desc);
+        return descriptor(desc, type, skip);
+    }
+
     private String fixMethodDesc(String desc, HashSet<String> skip) {
         Type ret = Type.getReturnType(desc);
         Type[] args = Type.getArgumentTypes(desc);
         boolean modified = false;
         for (int i = 0; i < args.length; i++) {
             Type a = args[i];
-            if (a.getSort() == Type.OBJECT) {
-                ClassMapping am = find(a.getInternalName(), skip);
-                if (am != null) {
-                    modified = true;
-                    args[i] = Type.getObjectType(am.name);
-                }
+            ClassMapping am = find(a.getInternalName(), skip);
+            if (am != null) {
+                modified = true;
+                args[i] = Type.getType(descriptor(a.getDescriptor(), skip));
             }
         }
-        if (ret.getSort() == Type.OBJECT) {
-            ClassMapping rm = find(ret.getInternalName(), skip);
-            if (rm != null) {
-                modified = true;
-                ret = Type.getObjectType(rm.name);
-            }
+        ClassMapping rm = find(ret.getInternalName(), skip);
+        if (rm != null) {
+            modified = true;
+            ret = Type.getType(descriptor(ret.getDescriptor(), skip));
         }
         if (modified) {
             return Type.getMethodDescriptor(ret, args);
