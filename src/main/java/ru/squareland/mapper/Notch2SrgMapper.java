@@ -212,6 +212,12 @@ public class Notch2SrgMapper extends Mapper {
                         mapped = true;
                         ti.desc = cm.name;
                     }
+                } else if (insn instanceof LdcInsnNode li && li.cst instanceof Type ty) {
+                    ClassMapping cm = find(ty.getClassName(), skip);
+                    if (cm != null) {
+                        mapped = true;
+                        li.cst = Type.getType(ty.getDescriptor().replace(ty.getClassName(), cm.name));
+                    }
                 }
             }
         }
