@@ -304,7 +304,7 @@ public class Notch2SrgMapper extends Mapper {
                 return "L" + mapping.name + ";";
             }
         }
-        return desc;
+        return type.getClassName();
     }
 
     private String descriptor(String desc, HashSet<String> skip) {
