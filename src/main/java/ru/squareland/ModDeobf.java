@@ -1,17 +1,15 @@
 package ru.squareland;
 
-import org.benf.cfr.reader.Main;
-import org.benf.cfr.reader.state.ClassFileSourceWrapper;
-import org.benf.cfr.reader.state.DCCommonState;
-import org.benf.cfr.reader.util.getopt.Options;
-import ru.squareland.decompiler.ClassSource;
-import ru.squareland.decompiler.DecompilationOptions;
-import ru.squareland.decompiler.DumperFactory;
+import org.jetbrains.java.decompiler.main.decompiler.CancelationManager;
+import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger;
+import ru.squareland.decompiler.ConsoleDecompiler;
 import ru.squareland.mapper.Notch2SrgMapper;
 import ru.squareland.mapper.Srg2CsvMapper;
 
 import java.io.File;
 import java.io.FileReader;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -44,11 +42,27 @@ public class ModDeobf {
 
         if (decompile) {
             File decompileDir = new File(Objects.requireNonNull(profile.getProperty("decompileDir"), "missing decompileDir"));
-            Options options = new DecompilationOptions(deobfVersionFile);
+            Map<String, Object> mapOptions = new HashMap<>();
+            mapOptions.put("include-runtime", "current");
+            mapOptions.put("decompile-generics", "");
+            mapOptions.put("indent-string", "    ");
 
-            DCCommonState dcCommonState = new DCCommonState(options, new ClassFileSourceWrapper(new ClassSource(outputFile, deobfVersionFile)));
-            DumperFactory dumperFactory = new DumperFactory(options, decompileDir);
-            Main.doJar(dcCommonState, outputFile.toString(), dumperFactory);
+            PrintStreamLogger logger = new PrintStreamLogger(System.out);
+            ConsoleDecompiler decompiler = new ConsoleDecompiler(decompileDir, mapOptions, logger, ConsoleDecompiler.SaveType.FOLDER);
+
+            if (deobfVersionFile.exists()) {
+                decompiler.addLibrary(deobfVersionFile);
+            }
+
+            decompiler.addSource(outputFile);
+
+//            decompiler.addWhitelist(prefix);
+
+            try {
+                decompiler.decompileContext();
+            } catch (CancelationManager.CanceledException var16) {
+                System.out.println("Decompilation canceled");
+            }
         }
     }
 }
